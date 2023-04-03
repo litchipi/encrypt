@@ -5,6 +5,11 @@ use orion::kdf::{Password, Salt, SecretKey};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 
+const DEFAULT_ITER: u32 = 3;
+const DEFAULT_MEM: u32 = 1 << 16;
+
+type KdfOpt = (u32, u32);
+
 #[derive(Debug)]
 pub enum Errcode {
     OrionError(orion::errors::UnknownCryptoError),
@@ -39,13 +44,28 @@ pub struct EncryptedData {
 }
 
 impl EncryptedData {
-    fn derive_key(salt: &Salt, pwd: &Password) -> Result<SecretKey, UnknownCryptoError> {
-        orion::kdf::derive_key(pwd, salt, 3, 1 << 16, 32)
+    fn derive_key(
+        salt: &Salt,
+        pwd: &Password,
+        kdf_opt: Option<KdfOpt>,
+    ) -> Result<SecretKey, UnknownCryptoError> {
+        let (it, mm) = if let Some((it, mm)) = kdf_opt {
+            (it, mm)
+        } else {
+            (DEFAULT_ITER, DEFAULT_MEM)
+        };
+
+        orion::kdf::derive_key(pwd, salt, it, mm, 32)
     }
 
-    pub fn decrypt<T: ToString, F: Write>(&self, pwd: T, outf: &mut F) -> Result<(), Errcode> {
+    pub fn decrypt<T: ToString, F: Write>(
+        &self,
+        pwd: T,
+        outf: &mut F,
+        kdf_opt: Option<KdfOpt>,
+    ) -> Result<(), Errcode> {
         let user_password = Password::from_slice(pwd.to_string().as_bytes())?;
-        let derived_key = Self::derive_key(&self.salt, &user_password)?;
+        let derived_key = Self::derive_key(&self.salt, &user_password, kdf_opt)?;
         let decrypted_data = aead::open(&derived_key, &self.ciphertext)?;
         if digest(&decrypted_data)? != self.checksum {
             panic!("Error while decrypting data: Wrong checksum");
@@ -61,10 +81,11 @@ impl EncryptedData {
         pwd: T,
         pwd_hint: String,
         inf: &mut F,
+        kdf_opt: Option<KdfOpt>,
     ) -> Result<Self, Errcode> {
         let user_password = Password::from_slice(pwd.to_string().as_bytes())?;
         let salt = Salt::default();
-        let derived_key = Self::derive_key(&salt, &user_password)?;
+        let derived_key = Self::derive_key(&salt, &user_password, kdf_opt)?;
         let mut plain_data = Vec::new();
         inf.read_to_end(&mut plain_data)?;
         let checksum = digest(&plain_data)?;
