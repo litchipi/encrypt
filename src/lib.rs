@@ -1,8 +1,8 @@
-use orion::hash::{digest, Digest};
 use orion::aead;
-use orion::kdf::{Password, SecretKey, Salt};
 use orion::errors::UnknownCryptoError;
-use serde::{Serialize, Deserialize};
+use orion::hash::{digest, Digest};
+use orion::kdf::{Password, Salt, SecretKey};
+use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 
 #[derive(Debug)]
@@ -40,7 +40,7 @@ pub struct EncryptedData {
 
 impl EncryptedData {
     fn derive_key(salt: &Salt, pwd: &Password) -> Result<SecretKey, UnknownCryptoError> {
-        orion::kdf::derive_key(pwd, salt, 3, 1<<16, 32)
+        orion::kdf::derive_key(pwd, salt, 3, 1 << 16, 32)
     }
 
     pub fn decrypt<T: ToString, F: Write>(&self, pwd: T, outf: &mut F) -> Result<(), Errcode> {
@@ -50,11 +50,18 @@ impl EncryptedData {
         if digest(&decrypted_data)? != self.checksum {
             panic!("Error while decrypting data: Wrong checksum");
         }
-        outf.write(&decrypted_data)?;
+        let nwrote = outf.write(&decrypted_data)?;
+        if nwrote == 0 {
+            println!("WARN: No data wrote to output file");
+        }
         Ok(())
     }
 
-    pub fn encrypt<T: ToString, F: Read>(pwd: T, pwd_hint: String, inf: &mut F) -> Result<Self, Errcode> {
+    pub fn encrypt<T: ToString, F: Read>(
+        pwd: T,
+        pwd_hint: String,
+        inf: &mut F,
+    ) -> Result<Self, Errcode> {
         let user_password = Password::from_slice(pwd.to_string().as_bytes())?;
         let salt = Salt::default();
         let derived_key = Self::derive_key(&salt, &user_password)?;
@@ -62,7 +69,12 @@ impl EncryptedData {
         inf.read_to_end(&mut plain_data)?;
         let checksum = digest(&plain_data)?;
         let ciphertext = aead::seal(&derived_key, &plain_data)?;
-        Ok(EncryptedData { salt, pwd_hint, ciphertext, checksum })
+        Ok(EncryptedData {
+            salt,
+            pwd_hint,
+            ciphertext,
+            checksum,
+        })
     }
 }
 
@@ -73,8 +85,10 @@ pub fn get_password(hint: &String) -> String {
 
 pub fn create_password() -> (String, String) {
     let pwd = loop {
-        let pwd = rpassword::prompt_password("Enter your password: ").expect("Error while getting password");
-        let confirm = rpassword::prompt_password("Confirm your password: ").expect("Error while getting password");
+        let pwd = rpassword::prompt_password("Enter your password: ")
+            .expect("Error while getting password");
+        let confirm = rpassword::prompt_password("Confirm your password: ")
+            .expect("Error while getting password");
         if pwd == confirm {
             break pwd;
         }
@@ -82,7 +96,8 @@ pub fn create_password() -> (String, String) {
     println!("Enter a hint to remember it:");
     let mut pwd_hint = String::new();
     let stdin = std::io::stdin();
-    stdin.read_line(&mut pwd_hint).expect("Error while getting hint");
+    stdin
+        .read_line(&mut pwd_hint)
+        .expect("Error while getting hint");
     (pwd, pwd_hint)
 }
-
