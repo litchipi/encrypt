@@ -5,6 +5,14 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "encryptf"
+path = "src/lib.rs"
+
+[[bin]]
+name = "encryptf"
+path = "src/main.rs"
+
 [dependencies]
 orion = { version = "0.17.4", features = ["safe_api", "serde"] }
 serde = { version = "1.0.156", features = ["derive"] }
