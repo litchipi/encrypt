@@ -1,9 +1,11 @@
+use nix::sys::termios::{tcgetattr, tcsetattr, SetArg};
 use orion::aead;
 use orion::errors::UnknownCryptoError;
 use orion::hash::{digest, Digest};
 use orion::kdf::{Password, Salt, SecretKey};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
+use std::os::fd::AsRawFd;
 
 const DEFAULT_ITER: u32 = 3;
 const DEFAULT_MEM: u32 = 1 << 16;
@@ -12,6 +14,7 @@ type KdfOpt = (u32, u32);
 
 #[derive(Debug)]
 pub enum Errcode {
+    WeakPassword,
     OrionError(orion::errors::UnknownCryptoError),
     IoError(std::io::Error),
     BinarySerialization(bincode::Error),
@@ -99,12 +102,38 @@ impl EncryptedData {
     }
 }
 
-pub fn get_password(hint: &String) -> String {
-    println!("Password hint: {}", hint);
-    rpassword::prompt_password("Enter your password: ").expect("Error while getting password")
+fn set_sig_handler() {
+    let stdin_fd = std::io::stdin().as_raw_fd();
+    let termios = tcgetattr(stdin_fd).unwrap();
+    ctrlc::set_handler(move || {
+        println!("Interrupted");
+        tcsetattr(stdin_fd, SetArg::TCSANOW, &termios).unwrap();
+        std::process::exit(1);
+    })
+    .unwrap();
 }
 
-pub fn create_password() -> (String, String) {
+fn check_password_strength(pwd: &String) -> Result<(), Errcode> {
+    let mut flag = pwd.len() < 6;
+    flag = flag || false; // TODO        Check entropy of the password
+    if flag {
+        Err(Errcode::WeakPassword)
+    } else {
+        Ok(())
+    }
+}
+
+pub fn get_password(hint: &String) -> Result<String, Errcode> {
+    set_sig_handler();
+    println!("Password hint: {}", hint);
+    let pwd =
+        rpassword::prompt_password("Enter your password: ").expect("Error while getting password");
+    check_password_strength(&pwd)?;
+    Ok(pwd)
+}
+
+pub fn create_password() -> Result<(String, String), Errcode> {
+    set_sig_handler();
     let pwd = loop {
         let pwd = rpassword::prompt_password("Enter your password: ")
             .expect("Error while getting password");
@@ -112,13 +141,17 @@ pub fn create_password() -> (String, String) {
             .expect("Error while getting password");
         if pwd == confirm {
             break pwd;
+        } else {
+            println!("Passwords doesn't match");
+            println!();
         }
     };
+    check_password_strength(&pwd)?;
     println!("Enter a hint to remember it:");
     let mut pwd_hint = String::new();
     let stdin = std::io::stdin();
     stdin
         .read_line(&mut pwd_hint)
         .expect("Error while getting hint");
-    (pwd, pwd_hint)
+    Ok((pwd, pwd_hint))
 }

@@ -23,13 +23,13 @@ impl Args {
             let mut encdata_buf = Vec::new();
             encdata_file.read_to_end(&mut encdata_buf)?;
             let encdata: EncryptedData = bincode::deserialize(&encdata_buf)?;
-            let pwd = get_password(&encdata.pwd_hint);
+            let pwd = get_password(&encdata.pwd_hint)?;
             let mut outf = std::fs::File::create(&self.output)?;
             encdata.decrypt(pwd, &mut outf, None)?;
             println!("Decryption finished successfully");
         } else if let Some(ref enc_file) = self.encrypt {
             assert!(self.decrypt.is_none());
-            let (pwd, hint) = create_password();
+            let (pwd, hint) = create_password()?;
             let mut plaintext_file =
                 std::fs::File::open(enc_file).expect("Input file doesn't exist");
             let encdata = EncryptedData::encrypt(pwd, hint, &mut plaintext_file, None)?;
