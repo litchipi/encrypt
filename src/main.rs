@@ -25,7 +25,7 @@ impl Args {
             let encdata: EncryptedData = bincode::deserialize(&encdata_buf)?;
             let pwd = get_password(&encdata.pwd_hint)?;
             let mut outf = std::fs::File::create(&self.output)?;
-            encdata.decrypt(pwd, &mut outf, None)?;
+            encdata.decrypt(pwd, &mut outf)?;
             println!("Decryption finished successfully");
         } else if let Some(ref enc_file) = self.encrypt {
             assert!(self.decrypt.is_none());

@@ -38,12 +38,21 @@ impl From<orion::errors::UnknownCryptoError> for Errcode {
     }
 }
 
+fn get_kdf_opt(opt: Option<KdfOpt>) -> KdfOpt {
+    if let Some((t, m)) = opt {
+        (t, m)
+    } else {
+        (DEFAULT_ITER, DEFAULT_MEM)
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct EncryptedData {
     pub pwd_hint: String,
     salt: orion::kdf::Salt,
     ciphertext: Vec<u8>,
     checksum: Digest,
+    pub kdf_opt: KdfOpt,
 }
 
 impl EncryptedData {
@@ -52,23 +61,13 @@ impl EncryptedData {
         pwd: &Password,
         kdf_opt: Option<KdfOpt>,
     ) -> Result<SecretKey, UnknownCryptoError> {
-        let (it, mm) = if let Some((it, mm)) = kdf_opt {
-            (it, mm)
-        } else {
-            (DEFAULT_ITER, DEFAULT_MEM)
-        };
-
-        orion::kdf::derive_key(pwd, salt, it, mm, 32)
+        let (it, mm) = get_kdf_opt(kdf_opt);
+    orion::kdf::derive_key(pwd, salt, it, mm, 32)
     }
 
-    pub fn decrypt<T: ToString, F: Write>(
-        &self,
-        pwd: T,
-        outf: &mut F,
-        kdf_opt: Option<KdfOpt>,
-    ) -> Result<(), Errcode> {
+    pub fn decrypt<T: ToString, F: Write>(&self, pwd: T, outf: &mut F) -> Result<(), Errcode> {
         let user_password = Password::from_slice(pwd.to_string().as_bytes())?;
-        let derived_key = Self::derive_key(&self.salt, &user_password, kdf_opt)?;
+        let derived_key = Self::derive_key(&self.salt, &user_password, Some(self.kdf_opt))?;
         let decrypted_data = aead::open(&derived_key, &self.ciphertext)?;
         if digest(&decrypted_data)? != self.checksum {
             panic!("Error while decrypting data: Wrong checksum");
@@ -98,6 +97,7 @@ impl EncryptedData {
             pwd_hint,
             ciphertext,
             checksum,
+            kdf_opt: get_kdf_opt(kdf_opt),
         })
     }
 }
