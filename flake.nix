@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-22.11";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-23.05";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -20,12 +20,11 @@
           inherit system;
           overlays = [ cargo2nix.overlays.default ];
         };
-        lib = pkgs.lib;
 
         src = ./.;
-        rustPkgs = pkgs.rustBuilder.makePackageSet rec {
+        rustPkgs = pkgs.rustBuilder.makePackageSet {
           rustChannel = "stable";
-          rustVersion = "1.68.0";
+          rustVersion = "1.70.0";
           packageFun = import ./Cargo.nix;
           extraRustComponents = [
             "clippy"
@@ -34,7 +33,7 @@
           packageOverrides = pkgs: pkgs.rustBuilder.overrides.all;
         };
 
-      in rec {
+      in {
         packages = {
           default = (rustPkgs.workspace.encryptf {}).bin;
         };
